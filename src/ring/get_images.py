@@ -15,6 +15,7 @@ import cv2
 import ring_doorbell
 from oauthlib.oauth2 import MissingTokenError
 import requests
+import retry
 import twilio.rest
 
 logger = logging.getLogger("ring_get_images")
@@ -187,13 +188,20 @@ class RingWrapper:
 
         return events
 
+    @retry.retry(tries=5, delay=10)
+    def get_event_recording_url(
+        self, device: ring_doorbell.RingDoorBell, event_id: str
+    ) -> Any:
+        logger.info("get_event_recording_url for event_id %s" % (event_id,))
+        return device.recording_url(event_id)
+
     def download_event(
         self, device_name: str, event_id: str, destination_path: str
     ) -> None:
         logger.info("Getting event %s URL..." % (event_id,))
         device: ring_doorbell.RingDoorBell = self.get_device(device_name)
         time.sleep(self.sleep_interval_seconds)
-        url = device.recording_url(event_id)
+        url: str = self.get_event_recording_url(device, event_id)
 
         logger.info("Downloading event...")
         video_path: str = os.path.join(destination_path, "video.mp4")
@@ -254,6 +262,10 @@ def main(
         if flag_file.exists():
             logger.info("event id %s already exists" % (event["id"],))
             continue
+        event_info_file: pathlib.Path = pathlib.Path(destination_path) / "event_info"
+        with event_info_file.open("w") as f_out:
+            f_out.write(json.dumps(event))
+
         if os.path.isdir(destination_path):
             shutil.rmtree(destination_path)
         os.mkdir(destination_path)
