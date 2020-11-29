@@ -1,10 +1,6 @@
-black
 ipdb
-mypy
-oauthlib
 opencv-contrib-python-headless
-pylint
-requests
 retry
 ring_doorbell
 twilio
+xgboost

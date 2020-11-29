@@ -11,7 +11,6 @@ import pprint
 import shutil
 import time
 
-import cv2
 import ring_doorbell
 from oauthlib.oauth2 import MissingTokenError
 import requests
@@ -196,44 +195,32 @@ class RingWrapper:
         return device.recording_url(event_id)
 
     def download_event(
-        self, device_name: str, event_id: str, destination_path: str
-    ) -> None:
+        self, device_name: str, event_id: str, destination_path: pathlib.Path
+    ) -> pathlib.Path:
         logger.info("Getting event %s URL..." % (event_id,))
+
+        video_path: pathlib.Path = destination_path / "video.mp4"
+        if video_path.exists():
+            logger.info("video path %s already exists, skipping" % (video_path,))
+            return video_path
+
         device: ring_doorbell.RingDoorBell = self.get_device(device_name)
         time.sleep(self.sleep_interval_seconds)
         url: str = self.get_event_recording_url(device, event_id)
 
         logger.info("Downloading event...")
-        video_path: str = os.path.join(destination_path, "video.mp4")
-        self.download_file(url, video_path)
+        return self.download_file(url, video_path)
 
-        logger.info("Getting frames...")
-        frames_path: str = os.path.join(destination_path, "frames")
-        if os.path.isdir(frames_path):
-            shutil.rmtree(frames_path)
-        os.mkdir(frames_path)
-
-        vidcap = cv2.VideoCapture(video_path)
-        success, image = vidcap.read()
-        count: int = 0
-        while success:
-            cv2.imwrite(os.path.join(frames_path, "frame%d.jpg" % (count,)), image)
-
-            # Get frames once per 1000ms (1 second)
-            vidcap.set(cv2.CAP_PROP_POS_MSEC, (count * 1000))
-
-            success, image = vidcap.read()
-            count += 1
-
-    def download_file(self, url: str, local_path: str) -> None:
+    def download_file(self, url: str, local_path: pathlib.Path) -> pathlib.Path:
         with requests.get(url, stream=True) as r:
-            with open(local_path, "wb") as f:
+            with local_path.open("wb") as f:
                 shutil.copyfileobj(r.raw, f)
+        return local_path
 
 
 def main(
     sleep_interval_seconds: int = 10,
-    event_limit: int = 20,
+    event_limit: int = 100,
     ring_event_page_limit: int = 10,
 ) -> None:
     ring_username: str = os.environ["RING_USERNAME"]
@@ -246,33 +233,41 @@ def main(
         twilio_account_sid, twilio_auth_token, twilio_phone_number
     )
     ring_wrapper: RingWrapper = RingWrapper(
-        ring_username,
-        ring_password,
-        twilio_wrapper,
-        sleep_interval_seconds,
+        ring_username, ring_password, twilio_wrapper, sleep_interval_seconds,
     )
     ring_wrapper.login()
     device_name: str = "Front Door Cam"
     events: List[Dict[str, Any]] = ring_wrapper.get_device_history(device_name)
     for event in events:
-        destination_path: str = os.path.join(
-            "/tmp/camera-package-notifier", str(event["id"])
+        destination_path: pathlib.Path = pathlib.Path(
+            "/tmp/camera-package-notifier"
+        ) / str(event["id"])
+
+        if not destination_path.exists():
+            os.mkdir(destination_path)
+
+        event_info_file: pathlib.Path = destination_path / "event_info"
+        flag_file: pathlib.Path = destination_path / "successful"
+
+        event_info_file.write_text(
+            json.dumps(event, indent=4, sort_keys=True, default=str)
         )
-        flag_file: pathlib.Path = pathlib.Path(destination_path) / "successful"
         if flag_file.exists():
             logger.info("event id %s already exists" % (event["id"],))
-            continue
-        event_info_file: pathlib.Path = pathlib.Path(destination_path) / "event_info"
-        with event_info_file.open("w") as f_out:
-            f_out.write(json.dumps(event))
+            # continue
 
-        if os.path.isdir(destination_path):
-            shutil.rmtree(destination_path)
-        os.mkdir(destination_path)
-        ring_wrapper.download_event(
+        shutil.rmtree(destination_path.absolute())
+        os.mkdir(destination_path.absolute())
+        event_info_file.write_text(
+            json.dumps(event, indent=4, sort_keys=True, default=str)
+        )
+        video_path: pathlib.Path = ring_wrapper.download_event(
             device_name, event_id=event["id"], destination_path=destination_path
         )
+
         flag_file.touch()
+
+        break
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+black
+mypy
+numpy
+oauthlib
+pylint
+requests
+scikit-image
+scikit-learn
+scipy
+tensorflow

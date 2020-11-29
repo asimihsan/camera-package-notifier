@@ -1,3 +1,5 @@
 *.cache
 *.code-workspace
 .vscode
+__pycache__
+.mypy_cache
