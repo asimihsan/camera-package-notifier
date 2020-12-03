@@ -22,8 +22,8 @@ def main(source_directory: pathlib.Path) -> None:
         if not child.is_dir():
             continue
 
-        # TODO REMOVEME
-        if "6900356524370737475" not in str(child.absolute()):
+        flag_file: pathlib.Path = child / "successful"
+        if not flag_file.is_file():
             continue
 
         logger.info("main - processing %s..." % (child,))

@@ -3,6 +3,7 @@ import logging
 import pathlib
 import shutil
 import math
+import operator
 
 from skimage.metrics import structural_similarity as ssim
 import cv2
@@ -72,11 +73,12 @@ class ImageExtractor:
             % (self.source_video_path, self.destination_images_path)
         )
         duration_seconds: float = self.get_duration_of_video(vidcap)
-        chunk_size_miliseconds: int = math.floor(duration_seconds / count) * 1000
+        max_chunk_size_miliseconds: int = math.floor(duration_seconds / count) * 1000
         last_frame: np.ndarray = self.get_last_frame_from_video(vidcap)
         return_value: List[np.ndarray] = []
 
         current_milliseconds: int = 0
+        current_chunk_size_milliseconds: int = 1000
         while len(return_value) < (count - 1):
             logger.debug(
                 "get_important_images - current_milliseconds %s"
@@ -86,7 +88,7 @@ class ImageExtractor:
             current_images: List[np.ndarray] = self.get_images_from_video(
                 vidcap,
                 current_milliseconds,
-                chunk_size_miliseconds,
+                current_chunk_size_milliseconds,
                 interval_milliseconds=interval_milliseconds,
             )
             logger.debug("get_important_images - calculating diffs...")
@@ -98,12 +100,15 @@ class ImageExtractor:
                 (self.diff_images(image, image_to_compare_to), image)
                 for image in current_images
             ]
-            diffs.sort()
+            diffs.sort(key=operator.itemgetter(0))
             logger.debug("get_important_images - found most important image in chunk")
             most_different_image: np.ndarray = diffs[0][1]
             return_value.append(most_different_image)
 
-            current_milliseconds += chunk_size_miliseconds
+            current_milliseconds += current_chunk_size_milliseconds
+            current_chunk_size_milliseconds = min(
+                max_chunk_size_miliseconds, current_chunk_size_milliseconds * 2
+            )
 
         return_value.append(last_frame)
         return return_value
