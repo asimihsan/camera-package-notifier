@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 
 from dataclasses import dataclass
+from typing import Optional, List
 import pathlib
+import PIL.Image
+import PySide2.QtCore
+import PySide2.QtGui
+import PySide2.QtWidgets
 import sys
-import tkinter as tk
-from typing import Optional
+import random
 
 
 @dataclass
@@ -12,6 +16,9 @@ class CameraEvent:
     root_path: pathlib.Path
     images_subpath: pathlib.Path
     images_annotated_flag_file: pathlib.Path
+
+    def get_image_paths(self) -> List[pathlib.Path]:
+        return sorted(filename for filename in self.images_subpath.iterdir())
 
 
 class CameraEventManager:
@@ -25,8 +32,11 @@ class CameraEventManager:
         self.images_subpath = images_subpath
 
     def get_unannotated_event(self) -> Optional[CameraEvent]:
+        paths: pathlib.Path = [path for path in self.root_path.iterdir()]
+        random.shuffle(paths)
+
         child: pathlib.Path
-        for child in self.root_path.iterdir():
+        for child in paths:
             if not child.is_dir():
                 continue
             images_path: pathlib.Path = child / self.images_subpath
@@ -44,46 +54,72 @@ class CameraEventManager:
         return None
 
 
-class AnnotationApp(tk.Frame):
-    master: tk.Misc
+class AnnotationApp(PySide2.QtWidgets.QDialog):
     camera_event_manager: CameraEventManager
-    current_camera_event: Optional[CameraEvent]
+    layout: Optional[PySide2.QtWidgets.QGridLayout]
+    button: PySide2.QtWidgets.QPushButton
 
     def __init__(
-        self, master: tk.Misc, camera_event_manager: CameraEventManager
+        self,
+        camera_event_manager: CameraEventManager,
+        parent: Optional[PySide2.QtWidgets.QWidget] = None,
     ) -> None:
-        super().__init__(master)
-        self.master = master
+        super(AnnotationApp, self).__init__(parent)
         self.camera_event_manager = camera_event_manager
-        self.pack()
-        self.create_widgets()
+        self.setWindowTitle("Annotation App")
+        self.layout = None
+        self.button = None
 
-    def create_widgets(self) -> None:
-        self.hi_there = tk.Button(self)
-        self.hi_there["text"] = "Hello World\n(click me)"
-        self.hi_there["command"] = self.say_hi
-        self.hi_there.pack(side="top")
+        self.next_event()
 
-        self.quit: tk.Button = tk.Button(
-            self, text="QUIT", fg="red", command=self.master.destroy
-        )
-        self.quit.pack(side="bottom")
+    def next_event(self) -> None:
+        if self.layout is not None:
+            while self.layout.count():
+                child = self.layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+        else:
+            self.layout = PySide2.QtWidgets.QGridLayout()
+            self.setLayout(self.layout)
+        if self.button is not None:
+            self.button.deleteLater()
+        self.button = PySide2.QtWidgets.QPushButton("I am a button")
+        self.button.clicked.connect(self.next_event)
+        self.layout.addWidget(self.button, 0, 0)
 
-    def say_hi(self) -> None:
-        print("hi there, everyone!")
-        self.current_camera_event = self.camera_event_manager.get_unannotated_event()
-        print(self.current_camera_event)
+        event = self.camera_event_manager.get_unannotated_event()
+        if event is None:
+            print("no more events to annotate")
+            sys.exit()
+
+        image_paths = event.get_image_paths()
+        images: List[PySide2.QtWidgets.QLabel] = []
+        image_path: pathlib.Path
+        for image_path in image_paths:
+            label = PySide2.QtWidgets.QLabel()
+            pixmap = PySide2.QtGui.QPixmap(str(image_path.absolute()))
+            pixmap = pixmap.scaled(
+                200,
+                200,
+                PySide2.QtCore.Qt.IgnoreAspectRatio,
+                PySide2.QtCore.Qt.SmoothTransformation,
+            )
+            label.setPixmap(pixmap)
+            label.setScaledContents(True)
+            images.append(label)
+
+        for i, image in enumerate(images):
+            self.layout.addWidget(image, 1, i)
 
 
 def main(root_path: pathlib.Path) -> None:
     camera_event_manager: CameraEventManager = CameraEventManager(
         root_path, images_subpath="images"
     )
-    root: tk.Tk = tk.Tk()
-    annotation_app: AnnotationApp = AnnotationApp(
-        master=root, camera_event_manager=camera_event_manager
-    )
-    annotation_app.mainloop()
+    app = PySide2.QtWidgets.QApplication()
+    annotation_app = AnnotationApp(camera_event_manager)
+    annotation_app.show()
+    sys.exit(app.exec_())
 
 
 if __name__ == "__main__":
