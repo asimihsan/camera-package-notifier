@@ -2,6 +2,7 @@ black
 mypy
 numpy
 oauthlib
+pillow
 pylint
 requests
 scikit-image

@@ -1,5 +1,6 @@
 ipdb
 opencv-contrib-python-headless
+PySide2
 retry
 ring_doorbell
 twilio
