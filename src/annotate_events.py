@@ -1,80 +1,21 @@
 #!/usr/bin/env python
 
-from dataclasses import dataclass
-from types import prepare_class
-from typing import Optional, List, Dict, Any
-import json
+from typing import Optional, List, Iterator
 import pathlib
 import PySide2.QtCore
 import PySide2.QtGui
 import PySide2.QtWidgets
 import sys
 
-
-@dataclass
-class CameraEvent:
-    root_path: pathlib.Path
-    images_subpath: pathlib.Path
-    images_annotated_flag_file: pathlib.Path
-
-    def get_image_paths(self) -> List[pathlib.Path]:
-        return sorted(filename for filename in self.images_subpath.iterdir())
-
-    def annotate_package_present(self) -> None:
-        print("annotation %s as package present" % (self.root_path,))
-        data: Dict[str, Any] = {
-            "images_subpath": self.images_subpath.stem,
-            "package_present": True,
-        }
-        with self.images_annotated_flag_file.open("w") as f_out:
-            json.dump(data, f_out)
-
-    def annotate_package_not_present(self) -> None:
-        print("annotation %s as package not present" % (self.root_path,))
-        data: Dict[str, Any] = {
-            "images_subpath": self.images_subpath.stem,
-            "package_present": False,
-        }
-        with self.images_annotated_flag_file.open("w") as f_out:
-            json.dump(data, f_out)
-
-
-class CameraEventManager:
-    root_path: pathlib.Path
-    images_subpath: str
-
-    def __init__(
-        self, root_path: pathlib.Path, images_subpath: str = "images",
-    ) -> None:
-        self.root_path = root_path
-        self.images_subpath = images_subpath
-
-    def get_unannotated_event(self) -> Optional[CameraEvent]:
-        paths: List[pathlib.Path] = [path for path in self.root_path.iterdir()]
-        paths.sort()
-
-        child: pathlib.Path
-        for child in paths:
-            if not child.is_dir():
-                continue
-            images_path: pathlib.Path = child / self.images_subpath
-            if not images_path.is_dir():
-                continue
-            flag_filename: str = "%s_annotated" % (self.images_subpath,)
-            images_annotated_flag_file: pathlib.Path = child / flag_filename
-            if images_annotated_flag_file.is_file():
-                print("%s is already annotated, skipping..." % (child,))
-                continue
-            return CameraEvent(
-                root_path=child,
-                images_subpath=images_path,
-                images_annotated_flag_file=images_annotated_flag_file,
-            )
-        return None
+if __name__ == "__main__":
+    from camera_event import CameraEvent, CameraEventManager
+else:
+    from .camera_event import CameraEvent, CameraEventManager
 
 
 class AnnotationApp(PySide2.QtWidgets.QDialog):
     camera_event_manager: CameraEventManager
+    unannotated_events: Iterator[CameraEvent]
     current_event: Optional[CameraEvent]
     app: PySide2.QtWidgets.QApplication
     layout: Optional[PySide2.QtWidgets.QGridLayout]
@@ -92,6 +33,7 @@ class AnnotationApp(PySide2.QtWidgets.QDialog):
     ) -> None:
         super(AnnotationApp, self).__init__(parent)
         self.camera_event_manager = camera_event_manager
+        self.unannotated_events = self.camera_event_manager.get_unannotated_events()
         self.current_event = None
         self.app = app
         self.setWindowTitle("Annotation App")
@@ -183,7 +125,7 @@ class AnnotationApp(PySide2.QtWidgets.QDialog):
         self.next_event()
 
     def next_event(self) -> None:
-        self.current_event = self.camera_event_manager.get_unannotated_event()
+        self.current_event = next(self.unannotated_events)
         if self.current_event is None:
             print("no more events to annotate")
             sys.exit()
