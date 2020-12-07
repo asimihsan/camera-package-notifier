@@ -6,6 +6,4 @@ pillow
 pylint
 requests
 scikit-image
-scikit-learn
 scipy
-tensorflow
