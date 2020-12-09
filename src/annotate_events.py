@@ -140,8 +140,8 @@ class AnnotationApp(PySide2.QtWidgets.QDialog):
             label = PySide2.QtWidgets.QLabel()
             pixmap = PySide2.QtGui.QPixmap(str(image_path.absolute()))
             pixmap = pixmap.scaled(
-                200,
-                200,
+                299,
+                299,
                 PySide2.QtCore.Qt.IgnoreAspectRatio,
                 PySide2.QtCore.Qt.SmoothTransformation,
             )
