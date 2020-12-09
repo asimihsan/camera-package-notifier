@@ -102,7 +102,13 @@ class ImageExtractor:
             ]
             diffs.sort(key=operator.itemgetter(0))
             logger.debug("get_important_images - found most important image in chunk")
-            most_different_image: np.ndarray = diffs[0][1]
+            try:
+                most_different_image: np.ndarray = diffs[0][1]
+            except IndexError:
+                logger.error(
+                    "get_important_images failed for %s" % (self.source_video_path,)
+                )
+                most_different_image = current_images[0]
             return_value.append(most_different_image)
 
             current_milliseconds += current_chunk_size_milliseconds

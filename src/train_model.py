@@ -59,7 +59,7 @@ def create_model(
     output = layers.Dense(128, activation="relu")(output)
     output = layers.Dropout(0.5)(output)
     output = layers.Dense(64, activation="relu")(output)
-    output = Dense(1, activation="softmax")(output)
+    output = Dense(1)(output)
     model = keras.Model(inputs=inputs, outputs=output)
     model.summary()
     return model
@@ -119,7 +119,7 @@ def main(camera_events_path: pathlib.Path) -> None:
     )
 
     model: keras.Model = create_model(input_shape=(image_x_pixels, image_y_pixels, 3))
-    loss_fn = keras.losses.BinaryCrossentropy()
+    loss_fn = keras.losses.Hinge()
     optimizer = keras.optimizers.Adam()
 
     model.compile(loss=loss_fn, optimizer=optimizer)

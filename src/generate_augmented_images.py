@@ -99,7 +99,7 @@ def generate_augmented_images(
     contrast_alpha: float = random.uniform(0.5, 2.0)
     vertical_flip: bool = False
     should_rotate: bool = random.choice([True, False])
-    rotate_degrees: int = random.randrange(-36, 36)
+    rotate_degrees: int = random.randrange(-18, 18)
     should_translate: bool = random.choice([True, False])
     translation_horizontal_proportion: float = random.uniform(-0.1, 0.1)
     translation_vertical_proportion: float = random.uniform(-0.1, 0.1)
