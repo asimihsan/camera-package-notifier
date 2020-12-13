@@ -4,6 +4,7 @@ import logging
 import pathlib
 import sys
 import shutil
+from typing import List
 
 from image_extractor import ImageExtractor
 
@@ -18,7 +19,8 @@ logging.getLogger().addHandler(ch)
 
 
 def main(source_directory: pathlib.Path) -> None:
-    for child in source_directory.iterdir():
+    children: List[pathlib.Path] = sorted(child for child in source_directory.iterdir())
+    for child in children:
         if not child.is_dir():
             continue
 

@@ -29,6 +29,13 @@ class CameraEvent:
             result.append(subchildren)
         return result
 
+    def get_event_info(self) -> Dict[str, Any]:
+        data: Dict[str, Any]
+        path: pathlib.Path = self.root_path / "event_info"
+        with path.open() as f_in:
+            data = json.load(f_in)
+        return data
+
     def get_annotation_package_present(self) -> bool:
         data: Dict[str, Any]
         with self.images_annotated_flag_file.open() as f_in:
