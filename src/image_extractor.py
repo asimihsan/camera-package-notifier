@@ -73,13 +73,23 @@ class ImageExtractor:
             % (self.source_video_path, self.destination_images_path)
         )
         duration_seconds: float = self.get_duration_of_video(vidcap)
-        max_chunk_size_miliseconds: int = math.floor(duration_seconds / count) * 1000
+        max_chunk_size_miliseconds: int = math.ceil(duration_seconds * 1000 / count)
         last_frame: np.ndarray = self.get_last_frame_from_video(vidcap)
         return_value: List[np.ndarray] = []
 
         current_milliseconds: int = 0
-        current_chunk_size_milliseconds: int = 1000
+        current_chunk_size_milliseconds: int = max(
+            min(math.ceil(duration_seconds * 1000 / count), 1000), interval_milliseconds
+        )
         while len(return_value) < (count - 1):
+            logger.info(
+                "get_important_images - current number of images: %d"
+                % (len(return_value),)
+            )
+            logger.info(
+                "get_important_images - current_chunk_size_milliseconds: %d"
+                % (current_chunk_size_milliseconds,)
+            )
             logger.debug(
                 "get_important_images - current_milliseconds %s"
                 % (current_milliseconds,)
@@ -91,6 +101,11 @@ class ImageExtractor:
                 current_chunk_size_milliseconds,
                 interval_milliseconds=interval_milliseconds,
             )
+            if len(current_images) == 0:
+                logger.info("get_important_images - no more images, re-use last image")
+                return_value.append(last_frame)
+                continue
+
             logger.debug("get_important_images - calculating diffs...")
             if len(return_value) == 0:
                 image_to_compare_to = last_frame
@@ -102,13 +117,7 @@ class ImageExtractor:
             ]
             diffs.sort(key=operator.itemgetter(0))
             logger.debug("get_important_images - found most important image in chunk")
-            try:
-                most_different_image: np.ndarray = diffs[0][1]
-            except IndexError:
-                logger.error(
-                    "get_important_images failed for %s" % (self.source_video_path,)
-                )
-                most_different_image = current_images[0]
+            most_different_image: np.ndarray = diffs[0][1]
             return_value.append(most_different_image)
 
             current_milliseconds += current_chunk_size_milliseconds

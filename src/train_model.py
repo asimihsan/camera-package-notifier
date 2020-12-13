@@ -9,6 +9,7 @@ References:
 
 from typing import List, Tuple
 import pathlib
+import pickle
 import sys
 
 from sklearn.model_selection import train_test_split
@@ -18,6 +19,7 @@ from tensorflow.keras.applications import Xception
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import Dense, Flatten, Concatenate
 import numpy as np
+import zstandard as zstd
 
 if __name__ == "__main__":
     from camera_event import CameraEvent, CameraEventManager
@@ -51,47 +53,20 @@ def create_model(
         norm_layer.set_weights([mean, var])
 
         output = base_model(input, training=False)
-        flattened = Flatten()(output)
-        outputs.append(flattened)
+        output = Flatten()(output)
+        output = layers.Dropout(0.2)(output)
+        output = layers.Dense(128, activation="relu")(output)
+        outputs.append(output)
 
     output = Concatenate()(outputs)
-    output = layers.Dropout(0.5)(output)
+    output = layers.Dropout(0.2)(output)
     output = layers.Dense(128, activation="relu")(output)
-    output = layers.Dropout(0.5)(output)
+    output = layers.Dropout(0.2)(output)
     output = layers.Dense(64, activation="relu")(output)
     output = Dense(1)(output)
     model = keras.Model(inputs=inputs, outputs=output)
     model.summary()
     return model
-
-
-def get_all_data(
-    camera_events_path: pathlib.Path,
-    image_x_pixels: int = 299,
-    image_y_pixels: int = 299,
-) -> Tuple[List[np.array], List[bool]]:
-    camera_event_manager = CameraEventManager(camera_events_path)
-    camera_events: List[CameraEvent] = [
-        event for event in camera_event_manager.get_annotated_events()
-    ]
-    package_present_events: List[CameraEvent] = [
-        event for event in camera_events if event.get_annotation_package_present()
-    ]
-    package_not_present_events: List[CameraEvent] = [
-        event for event in camera_events if not event.get_annotation_package_present()
-    ]
-
-    X_all: List[List[np.array]] = []
-    y_all: List[bool] = []
-
-    for camera_event in package_present_events + package_not_present_events:
-        data = camera_event.get_camera_event_package_present_as_numpy_data(
-            image_x_pixels=image_x_pixels, image_y_pixels=image_y_pixels
-        )
-        X_all.extend(data[0])
-        y_all.extend([data[1]] * len(data[0]))
-
-    return (X_all, y_all)
 
 
 def convert_X_to_keras_input(X: List[List[np.ndarray]]) -> List[np.array]:
@@ -103,16 +78,20 @@ def convert_X_to_keras_input(X: List[List[np.ndarray]]) -> List[np.array]:
     return X_3
 
 
-def main(camera_events_path: pathlib.Path) -> None:
+def main(input_data_path: pathlib.Path, output_model_path: pathlib.Path) -> None:
     image_x_pixels: int = 299
     image_y_pixels: int = 299
 
     # TODO clean up how X_all is created
     # TODO cross-validation
     # TODO test hold-out
-    X_all, y_all = get_all_data(
-        camera_events_path, image_x_pixels=image_x_pixels, image_y_pixels=image_y_pixels
-    )
+    print("loading data...")
+    dctx = zstd.ZstdDecompressor()
+    with input_data_path.open("rb") as f_in:
+        with dctx.stream_reader(f_in) as reader:
+            unpickler = pickle.Unpickler(reader)
+            X_all, y_all = unpickler.load()
+    print("loaded data.")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X_all, y_all, stratify=y_all, test_size=0.1, random_state=42
@@ -124,15 +103,18 @@ def main(camera_events_path: pathlib.Path) -> None:
 
     model.compile(loss=loss_fn, optimizer=optimizer)
 
-    early_stopping_callback = EarlyStopping(monitor="val_loss", patience=3)
+    early_stopping_callback = EarlyStopping(monitor="val_loss", patience=5)
     model_checkpoint_callback = ModelCheckpoint(
-        "/tmp/camera_model.h5", monitor="val_loss", verbose=0, save_best_only=True,
+        str(output_model_path.absolute()),
+        monitor="val_loss",
+        verbose=0,
+        save_best_only=True,
     )
 
     model.fit(
         x=convert_X_to_keras_input(X_train),
         y=np.asarray(y_train),
-        epochs=10,
+        epochs=100,
         batch_size=32,
         validation_split=0.2,
         shuffle=True,
@@ -145,11 +127,6 @@ def main(camera_events_path: pathlib.Path) -> None:
     )
     print("test loss, test acc: ", results)
 
-    import ipdb
-
-    ipdb.set_trace()
-    pass
-
 
 if __name__ == "__main__":
-    main(pathlib.Path(sys.argv[1]))
+    main(pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]))
