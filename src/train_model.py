@@ -19,6 +19,7 @@ from tensorflow.keras.applications import Xception
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import Dense, Flatten, Concatenate
 import numpy as np
+import tensorflow as tf
 import zstandard as zstd
 
 if __name__ == "__main__":
@@ -34,6 +35,19 @@ def create_model(
         include_top=False, weights="imagenet", input_shape=input_shape, pooling="avg"
     )
     base_model.trainable = False
+
+    xception_encoder_input = keras.Input(shape=(2048,))
+    xception_encoder_internal = layers.Dropout(0.5)(xception_encoder_input)
+    xception_encoder_internal = layers.Dense(256, activation="relu")(
+        xception_encoder_internal
+    )
+    xception_encoder_internal = layers.Dropout(0.5)(xception_encoder_internal)
+    xception_encoder_output = layers.Dense(128, activation="relu")(
+        xception_encoder_internal
+    )
+    xception_encoder = keras.models.Model(
+        xception_encoder_input, xception_encoder_output
+    )
 
     inputs = []
     outputs = []
@@ -54,14 +68,13 @@ def create_model(
 
         output = base_model(input, training=False)
         output = Flatten()(output)
-        output = layers.Dropout(0.2)(output)
-        output = layers.Dense(128, activation="relu")(output)
+        output = xception_encoder(output)
         outputs.append(output)
 
     output = Concatenate()(outputs)
-    output = layers.Dropout(0.2)(output)
+    output = layers.Dropout(0.5)(output)
     output = layers.Dense(128, activation="relu")(output)
-    output = layers.Dropout(0.2)(output)
+    output = layers.Dropout(0.5)(output)
     output = layers.Dense(64, activation="relu")(output)
     output = Dense(1)(output)
     model = keras.Model(inputs=inputs, outputs=output)
@@ -97,11 +110,18 @@ def main(input_data_path: pathlib.Path, output_model_path: pathlib.Path) -> None
         X_all, y_all, stratify=y_all, test_size=0.1, random_state=42
     )
 
-    model: keras.Model = create_model(input_shape=(image_x_pixels, image_y_pixels, 3))
-    loss_fn = keras.losses.Hinge()
-    optimizer = keras.optimizers.Adam()
+    strategy = tf.distribute.MirroredStrategy()
+    print("Number of devices: {}".format(strategy.num_replicas_in_sync))
+    with strategy.scope():
+        model: keras.Model = create_model(
+            input_shape=(image_x_pixels, image_y_pixels, 3)
+        )
+        loss_fn = keras.losses.Hinge()
 
-    model.compile(loss=loss_fn, optimizer=optimizer)
+        # default learning rate is 1e-3
+        optimizer = keras.optimizers.Adam(learning_rate=1e-3)
+
+        model.compile(loss=loss_fn, optimizer=optimizer)
 
     early_stopping_callback = EarlyStopping(monitor="val_loss", patience=5)
     model_checkpoint_callback = ModelCheckpoint(
@@ -115,7 +135,7 @@ def main(input_data_path: pathlib.Path, output_model_path: pathlib.Path) -> None
         x=convert_X_to_keras_input(X_train),
         y=np.asarray(y_train),
         epochs=100,
-        batch_size=32,
+        batch_size=64,
         validation_split=0.2,
         shuffle=True,
         class_weight={False: 0.5, True: 0.5},
