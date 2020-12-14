@@ -16,6 +16,25 @@ INSTANCE_ID=$(aws --region $AWS_REGION ec2 describe-instances \
 aws --region $AWS_REGION ssm start-session --target $INSTANCE_ID
 ```
 
+Copy model to S3
+
+```
+DATA_BUCKET_NAME=$(aws cloudformation --region us-west-2 describe-stacks --stack-name camera-package-notifier-TrainingStack \
+    --query "Stacks[0].Outputs[?OutputKey=='DataBucketName'].OutputValue" --output text)
+aws s3 cp data/data_set.pickle.zst s3://"${DATA_BUCKET_NAME}"/
+```
+
+Copy code to S3 TODO
+
+```
+# on mac
+fd . --no-ignore --exclude '__pycache__' src > /tmp/rsync_files.txt
+rsync -avz --files-from /tmp/rsync_files.txt . ec2-user@54.202.177.141:~/camera-package-notifier
+
+# on host
+/home/ec2-user/anaconda3/envs/tensorflow2_latest_p37/bin/python src/train_model.py /home/ec2-user/data_set.pickle.zst /home/ec2-user/camera_model.h5
+```
+
 ## Setup
 
 Prerequisites:
