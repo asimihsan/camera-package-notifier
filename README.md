@@ -28,11 +28,35 @@ Copy code to S3 TODO
 
 ```
 # on mac
-fd . --no-ignore --exclude '__pycache__' src > /tmp/rsync_files.txt
-rsync -avz --files-from /tmp/rsync_files.txt . ec2-user@54.202.177.141:~/camera-package-notifier
+fd . --no-ignore --exclude '__pycache__' --type f src > /tmp/rsync_files.txt
+rsync -avz --files-from /tmp/rsync_files.txt . ec2-user@54.189.77.161:~/camera-package-notifier
 
 # on host
-/home/ec2-user/anaconda3/envs/tensorflow2_latest_p37/bin/python src/train_model.py /home/ec2-user/data_set.pickle.zst /home/ec2-user/camera_model.h5
+/home/ec2-user/anaconda3/envs/tensorflow2_latest_p37/bin/python /home/ec2-user/camera-package-notifier/src/train_model.py /home/ec2-user/data_set.pickle.zst /home/ec2-user/camera_model.h5
+```
+
+Copy model from EC2 host to S3
+TODO inject via environment variable
+
+```
+# on mac
+MODEL_BUCKET_NAME=$(aws cloudformation --region us-west-2 describe-stacks --stack-name camera-package-notifier-TrainingStack \
+    --query "Stacks[0].Outputs[?OutputKey=='ModelBucketName'].OutputValue" --output text)
+
+# on EC2 host
+aws s3 cp /home/ec2-user/camera_model.h5 s3://"${MODEL_BUCKET_NAME}"/camera_model_2_0.0443.h5
+```
+
+Inference for event with package:
+
+```
+python src/inference.py data/camera_model_2_0.0443.h5 /Users/asimi/Programming/front-door-cam-videos 690252354582496697
+```
+
+....and without:
+
+```
+
 ```
 
 ## Setup

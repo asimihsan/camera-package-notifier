@@ -20,6 +20,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import Dense, Flatten, Concatenate
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.keras.applications.densenet import preprocess_input
 import zstandard as zstd
 
 if __name__ == "__main__":
@@ -29,19 +30,22 @@ else:
 
 
 def create_model(
-    input_shape: Tuple[int, int, int] = (299, 299, 3), number_of_input_images: int = 5
+    input_shape: Tuple[int, int, int] = (299, 299, 3),
+    number_of_input_images: int = 5,
+    dropout: float = 0.2,
 ) -> keras.Model:
     base_model = Xception(
         include_top=False, weights="imagenet", input_shape=input_shape, pooling="avg"
     )
     base_model.trainable = False
+    preprocess_layer = tf.keras.applications.xception.preprocess_input
 
     xception_encoder_input = keras.Input(shape=(2048,))
-    xception_encoder_internal = layers.Dropout(0.5)(xception_encoder_input)
+    xception_encoder_internal = layers.Dropout(dropout)(xception_encoder_input)
     xception_encoder_internal = layers.Dense(256, activation="relu")(
         xception_encoder_internal
     )
-    xception_encoder_internal = layers.Dropout(0.5)(xception_encoder_internal)
+    xception_encoder_internal = layers.Dropout(dropout)(xception_encoder_internal)
     xception_encoder_output = layers.Dense(128, activation="relu")(
         xception_encoder_internal
     )
@@ -55,26 +59,16 @@ def create_model(
         input = keras.Input(shape=input_shape)
         inputs.append(input)
 
-        # Pre-trained Xception weights requires that input be normalized
-        # from (0, 255) to a range (-1., +1.), the normalization layer
-        # does the following, outputs = (inputs - mean) / sqrt(var)
-        norm_layer = layers.experimental.preprocessing.Normalization()
-        mean = np.array([127.5] * 3)
-        var = mean ** 2
-
-        # Scale inputs to [-1, +1]
-        input = norm_layer(input)
-        norm_layer.set_weights([mean, var])
-
+        input = preprocess_layer(input)
         output = base_model(input, training=False)
         output = Flatten()(output)
         output = xception_encoder(output)
         outputs.append(output)
 
     output = Concatenate()(outputs)
-    output = layers.Dropout(0.5)(output)
+    output = layers.Dropout(dropout)(output)
     output = layers.Dense(128, activation="relu")(output)
-    output = layers.Dropout(0.5)(output)
+    output = layers.Dropout(dropout)(output)
     output = layers.Dense(64, activation="relu")(output)
     output = Dense(1)(output)
     model = keras.Model(inputs=inputs, outputs=output)

@@ -1,9 +1,14 @@
 from dataclasses import dataclass
-from typing import List, Dict, Any, Iterator, Tuple
+from typing import List, Dict, Any, Iterator, Tuple, Optional
 import cv2
+import itertools
 import json
 import numpy as np
 import pathlib
+
+
+class CameraEventNotFound(Exception):
+    pass
 
 
 @dataclass
@@ -42,9 +47,27 @@ class CameraEvent:
             data = json.load(f_in)
         return data["package_present"] is True
 
+    def get_camera_event_actual_images_as_numpy_data(
+        self, image_x_pixels: int = 299, image_y_pixels: int = 299
+    ) -> Tuple[List[np.array], bool]:
+        imgs: List[np.array] = []
+        for image in self.get_image_paths():
+            img: np.array = cv2.imread(str(image.absolute()))
+            img = cv2.resize(
+                img, (image_x_pixels, image_y_pixels), interpolation=cv2.INTER_LANCZOS4,
+            )
+            imgs.append(img)
+
+        annotation: Optional[bool]
+        if self.images_annotated_flag_file.is_file():
+            annotation = self.get_annotation_package_present()
+        else:
+            annotation = None
+        return (imgs, annotation)
+
     def get_camera_event_package_present_as_numpy_data(
         self, image_x_pixels: int = 299, image_y_pixels: int = 299
-    ) -> Tuple[List[List[np.array]], bool]:
+    ) -> Tuple[List[List[np.array]], Optional[bool]]:
         """Convert camera event into (augmented images, boolean for is package is present).
 
         Augmented images is [[image_1, image_2, image_3, ...]].
@@ -99,6 +122,26 @@ class CameraEventManager:
 
     def get_annotated_events(self) -> Iterator[CameraEvent]:
         return self.get_events(get_annotated_events=True)
+
+    def get_all_events(self) -> Iterator[CameraEvent]:
+        return itertools.chain(
+            self.get_annotated_events(), self.get_unannotated_events()
+        )
+
+    def get_event(self, event_id: str) -> CameraEvent:
+        path = self.root_path / event_id
+        if not path.is_dir():
+            raise CameraEventNotFound()
+        images_path: pathlib.Path = path / self.images_subpath
+        augmented_images_path: pathlib.Path = path / f"{self.images_subpath}_augmented"
+        flag_filename: str = "%s_annotated" % (self.images_subpath,)
+        images_annotated_flag_file: pathlib.Path = path / flag_filename
+        return CameraEvent(
+            root_path=path,
+            images_subpath=images_path,
+            augmented_images_subpath=augmented_images_path,
+            images_annotated_flag_file=images_annotated_flag_file,
+        )
 
     def get_events(self, get_annotated_events: bool) -> Iterator[CameraEvent]:
         paths: List[pathlib.Path] = [path for path in self.root_path.iterdir()]
