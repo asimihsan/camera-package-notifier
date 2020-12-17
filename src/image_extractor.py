@@ -83,18 +83,20 @@ class ImageExtractor:
         )
         while len(return_value) < (count - 1):
             logger.info(
-                "get_important_images - current number of images: %d"
-                % (len(return_value),)
+                "get_important_images %s - current number of images: %d"
+                % (self.source_video_path, len(return_value),)
             )
             logger.info(
-                "get_important_images - current_chunk_size_milliseconds: %d"
-                % (current_chunk_size_milliseconds,)
+                "get_important_images %s - current_chunk_size_milliseconds: %d"
+                % (self.source_video_path, current_chunk_size_milliseconds,)
             )
             logger.debug(
-                "get_important_images - current_milliseconds %s"
-                % (current_milliseconds,)
+                "get_important_images %s - current_milliseconds %s"
+                % (self.source_video_path, current_milliseconds,)
             )
-            logger.debug("get_important_images - getting images..")
+            logger.debug(
+                "get_important_images %s - getting images.." % (self.source_video_path,)
+            )
             current_images: List[np.ndarray] = self.get_images_from_video(
                 vidcap,
                 current_milliseconds,
@@ -102,11 +104,17 @@ class ImageExtractor:
                 interval_milliseconds=interval_milliseconds,
             )
             if len(current_images) == 0:
-                logger.info("get_important_images - no more images, re-use last image")
+                logger.info(
+                    "get_important_images %s - no more images, re-use last image"
+                    % (self.source_video_path,)
+                )
                 return_value.append(last_frame)
                 continue
 
-            logger.debug("get_important_images - calculating diffs...")
+            logger.debug(
+                "get_important_images %s - calculating diffs..."
+                % (self.source_video_path,)
+            )
             if len(return_value) == 0:
                 image_to_compare_to = last_frame
             else:
@@ -116,7 +124,10 @@ class ImageExtractor:
                 for image in current_images
             ]
             diffs.sort(key=operator.itemgetter(0))
-            logger.debug("get_important_images - found most important image in chunk")
+            logger.debug(
+                "get_important_images %s - found most important image in chunk"
+                % (self.source_video_path,)
+            )
             most_different_image: np.ndarray = diffs[0][1]
             return_value.append(most_different_image)
 
