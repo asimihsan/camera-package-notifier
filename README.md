@@ -16,23 +16,28 @@ INSTANCE_ID=$(aws --region $AWS_REGION ec2 describe-instances \
 aws --region $AWS_REGION ssm start-session --target $INSTANCE_ID
 ```
 
-Copy model to S3
+On EC2 host, copy data set from S3
 
 ```
+# on Mac
 DATA_BUCKET_NAME=$(aws cloudformation --region us-west-2 describe-stacks --stack-name camera-package-notifier-TrainingStack \
     --query "Stacks[0].Outputs[?OutputKey=='DataBucketName'].OutputValue" --output text)
+
+# on EC2 host
 aws s3 cp data/data_set.pickle.zst s3://"${DATA_BUCKET_NAME}"/
 ```
 
-Copy code to S3 TODO
+Copy code to host then train
 
 ```
 # on mac
+IP_ADDRESS=54.149.211.174
 fd . --no-ignore --exclude '__pycache__' --type f src > /tmp/rsync_files.txt
-rsync -avz --files-from /tmp/rsync_files.txt . ec2-user@54.189.77.161:~/camera-package-notifier
+rsync -avz --files-from /tmp/rsync_files.txt . ec2-user@"${IP_ADDRESS}":~/camera-package-notifier
 
 # on host
 /home/ec2-user/anaconda3/envs/tensorflow2_latest_p37/bin/python /home/ec2-user/camera-package-notifier/src/train_model.py /home/ec2-user/data_set.pickle.zst /home/ec2-user/camera_model.h5
+aws s3 cp /home/ec2-user/camera_model.h5 s3://"${MODEL_BUCKET_NAME}"/camera_model_xception_5.h5
 ```
 
 Copy model from EC2 host to S3
@@ -47,17 +52,63 @@ MODEL_BUCKET_NAME=$(aws cloudformation --region us-west-2 describe-stacks --stac
 aws s3 cp /home/ec2-user/camera_model.h5 s3://"${MODEL_BUCKET_NAME}"/camera_model_2_0.0443.h5
 ```
 
-Inference for event with package:
+Inference (camera_model_3 hadn't seen these events before)
 
 ```
-python src/inference.py data/camera_model_2_0.0443.h5 /Users/asimi/Programming/front-door-cam-videos 690252354582496697
+# package present, left there
+python src/inference.py data/camera_model_3.h5 /Users/asimi/Programming/front-door-cam-videos 6902523545824966979
+prediction: 0.7924347
+
+# package present, with truck
+python src/inference.py data/camera_model_3.h5 /Users/asimi/Programming/front-door-cam-videos 6902952467028949315
+prediction: 0.124703854
+
+# package present (straight after truck)
+python src/inference.py data/camera_model_3.h5 /Users/asimi/Programming/front-door-cam-videos 6902953446281492803
+prediction: 0.16815904
+
+# package present night time
+python src/inference.py data/camera_model_3.h5 /Users/asimi/Programming/front-door-cam-videos 6903686760407677251
+prediction: 0.0111320615
+
+# package not present (night time just picked up)
+python src/inference.py data/camera_model_3.h5 /Users/asimi/Programming/front-door-cam-videos 6903696771976444227
+prediction: 0.00014188886
+
+# package not present (mail truck)
+python src/inference.py data/camera_model_3.h5 /Users/asimi/Programming/front-door-cam-videos 6903717782956456259
+prediction: 3.2932355e-06
+
+# package not present (delivery person walks by with box)
+python src/inference.py data/camera_model_3.h5 /Users/asimi/Programming/front-door-cam-videos 6903961792933443907
+prediction: 7.683965e-06
 ```
 
-....and without:
+Inference for `camera_model_xception_5`
+
+```
+# night time no package
+python src/inference.py data/camera_model_xception_5.h5 /Users/asimi/Programming/front-door-cam-videos 6904071756981123395
+
+# night time package present
+python src/inference.py data/camera_model_xception_5.h5 /Users/asimi/Programming/front-door-cam-videos 6904073530802616643
+
+# day time package present
+python src/inference.py data/camera_model_xception_5.h5 /Users/asimi/Programming/front-door-cam-videos 6904322123509709123
+
+# day time package present
+python src/inference.py data/camera_model_xception_5.h5 /Users/asimi/Programming/front-door-cam-videos 6905848275713833283
 
 ```
 
+Model results
+
 ```
+/camera_model_xception_5.h5
+45/45 [==============================] - 14s 319ms/step - loss: 0.1390 - accuracy: 0.9451 - get_f1: 0.7186 - matthews_correlation: 0.7018
+evaluation results:  [0.13898992538452148, 0.9451388716697693, 0.7185773849487305, 0.7018318772315979]
+```
+
 
 ## Setup
 

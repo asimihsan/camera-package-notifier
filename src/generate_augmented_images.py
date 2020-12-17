@@ -81,7 +81,11 @@ def augment_images(
     random.seed(camera_event.root_path.__hash__() % 2 ** 31)
     np.random.seed(camera_event.root_path.__hash__() % 2 ** 31)
     images_subpath: pathlib.Path = camera_event.images_subpath
-    augmented_images_dirname: str = "%s_augmented" % (images_subpath.stem,)
+    augmented_images_dirname: str = f"{images_subpath.stem}_augmented"
+    flag_file: pathlib.Path = camera_event.root_path / f"{augmented_images_dirname}_successful"
+    if flag_file.is_file():
+        print("already augmented %s, skipping" % (camera_event.root_path,))
+        return
     augmented_images_subpath: pathlib.Path = camera_event.root_path / augmented_images_dirname
     if augmented_images_subpath.is_dir():
         shutil.rmtree(str(augmented_images_subpath.absolute()))
@@ -90,6 +94,7 @@ def augment_images(
         destination_directory = augmented_images_subpath / f"{i:05d}"
         destination_directory.mkdir()
         generate_augmented_images(camera_event.get_image_paths(), destination_directory)
+    flag_file.touch()
 
 
 def generate_augmented_images(

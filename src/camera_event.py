@@ -5,6 +5,8 @@ import itertools
 import json
 import numpy as np
 import pathlib
+import pickle
+import zstandard as zstd
 
 
 class CameraEventNotFound(Exception):
@@ -17,6 +19,30 @@ class CameraEvent:
     images_subpath: pathlib.Path
     augmented_images_subpath: pathlib.Path
     images_annotated_flag_file: pathlib.Path
+
+    def load_precomputed_data(self) -> Tuple[List[List[np.array]], bool]:
+        precomputed_data_path: pathlib.Path = self.get_precomputed_data_path()
+        dctx = zstd.ZstdDecompressor()
+        with precomputed_data_path.open("rb") as f_in:
+            with dctx.stream_reader(f_in) as reader:
+                unpickler = pickle.Unpickler(reader)
+                data: Tuple[List[List[np.array]], bool] = unpickler.load()
+                return data
+
+    def save_precomputed_data(self, data: Tuple[List[List[np.array]], bool]) -> None:
+        precomputed_data_path: pathlib.Path = self.get_precomputed_data_path()
+        cctx = zstd.ZstdCompressor(level=3, threads=-1)
+        with precomputed_data_path.open("wb") as f_out:
+            with cctx.stream_writer(f_out) as compressor:
+                pickler = pickle.Pickler(compressor, protocol=4)
+                pickler.dump(data)
+        self.get_precomputed_data_flag_path().touch()
+
+    def get_precomputed_data_path(self) -> pathlib.Path:
+        return self.root_path / "precomputed_data.pickle.zst"
+
+    def get_precomputed_data_flag_path(self) -> pathlib.Path:
+        return self.root_path / "precomputed_data_successful"
 
     def get_image_paths(self) -> List[pathlib.Path]:
         return sorted(filename for filename in self.images_subpath.iterdir())
@@ -49,7 +75,7 @@ class CameraEvent:
 
     def get_camera_event_actual_images_as_numpy_data(
         self, image_x_pixels: int = 299, image_y_pixels: int = 299
-    ) -> Tuple[List[np.array], bool]:
+    ) -> Tuple[List[np.array], Optional[bool]]:
         imgs: List[np.array] = []
         for image in self.get_image_paths():
             img: np.array = cv2.imread(str(image.absolute()))
@@ -67,7 +93,7 @@ class CameraEvent:
 
     def get_camera_event_package_present_as_numpy_data(
         self, image_x_pixels: int = 299, image_y_pixels: int = 299
-    ) -> Tuple[List[List[np.array]], Optional[bool]]:
+    ) -> Tuple[List[List[np.array]], bool]:
         """Convert camera event into (augmented images, boolean for is package is present).
 
         Augmented images is [[image_1, image_2, image_3, ...]].
